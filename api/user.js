@@ -1,8 +1,15 @@
 export default async (req, res) => {
 	const username = req.query.username;
 	const year = req.query.year || '2023';
+	const token = req.query.token;
 
-	const token = process.env.GITHUB_TOKEN; // Insérez ici votre token GitHub
+	if (!username) {
+		return res.status(400).json({ error: 'Missing username' });
+	}
+
+	if (!token) {
+		return res.status(400).json({ error: 'Missing token' });
+	}
 
 	try {
 		// Utiliser l'importation dynamique pour charger @octokit/graphql
