@@ -1,13 +1,13 @@
-const { graphql } = require('@octokit/graphql');
-
-// Fonction pour récupérer les contributions via l'API GitHub
 export default async (req, res) => {
 	const username = req.query.username;
 	const year = req.query.year || '2023';
 
-	const token = process.env.GITHUB_TOKEN; // Insérez ici votre token GitHub
+	const token = 'YOUR_GITHUB_PERSONAL_ACCESS_TOKEN'; // Insérez ici votre token GitHub
 
 	try {
+		// Utiliser l'importation dynamique pour charger @octokit/graphql
+		const { graphql } = await import('@octokit/graphql');
+
 		// Requête GraphQL pour obtenir les contributions sur une période spécifique
 		const result = await graphql(
 			`
