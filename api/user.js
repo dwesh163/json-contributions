@@ -1,50 +1,74 @@
-const cheerio = require('cheerio');
-const got = require('got');
+const { graphql } = require('@octokit/graphql');
 
-export default (req, res) => {
-  let GH_DOMAIN = 'https://github.com'
-  let year = "2020"
-  if (req.query.year) {
-    year = req.query.year
-  }
-  let contributions = []
-  let minCount = 0
-  let maxCount = 0
+// Fonction pour récupérer les contributions via l'API GitHub
+export default async (req, res) => {
+	const username = req.query.username;
+	const year = req.query.year || '2023';
 
-  let url = `${req.query.username}?tab=overview&from=${year}-12-01&to=${year}-12-31`
-  got(url, {prefixUrl: GH_DOMAIN}).then(response => {
-    const $ = cheerio.load(response.body)
-    let weeks = $('.js-yearly-contributions svg > g g')
+	const token = process.env.GITHUB_TOKEN; // Insérez ici votre token GitHub
 
-    weeks.each((i, w) => {
-      let week = {}
-      week['week'] = i
-      week['days'] = []
-      $(w).find('rect').each((j, r) => {
-        let day = {}
-        day['date'] = $(r).data('date')
-        day['count'] = $(r).data('count')
-        week['days'].push(day)
+	try {
+		// Requête GraphQL pour obtenir les contributions sur une période spécifique
+		const result = await graphql(
+			`
+				query ($username: String!, $from: DateTime!, $to: DateTime!) {
+					user(login: $username) {
+						contributionsCollection(from: $from, to: $to) {
+							contributionCalendar {
+								weeks {
+									contributionDays {
+										date
+										contributionCount
+									}
+								}
+							}
+						}
+					}
+				}
+			`,
+			{
+				username: username,
+				from: `${year}-01-01T00:00:00Z`,
+				to: `${year}-12-31T23:59:59Z`,
+				headers: {
+					authorization: `token ${token}`,
+				},
+			}
+		);
 
-        if ($(r).data('count') <= minCount) {
-          minCount = $(r).data('count')
-        }
-        if ($(r).data('count') > maxCount) {
-          maxCount = $(r).data('count')
-        }
-      })
-      contributions.push(week)
-    })
+		// Extraire les semaines et jours de contribution
+		const weeks = result.user.contributionsCollection.contributionCalendar.weeks;
+		let contributions = [];
+		let minCount = Infinity;
+		let maxCount = 0;
 
-    res.json({
-      username: req.query.username,
-      year: year,
-      min: minCount,
-      max: maxCount,
-      contributions: contributions
-    })
-  }).catch(err => {
-    // TODO: something better
-    console.log(err)
-  })
-}
+		weeks.forEach((week, i) => {
+			let weekData = { week: i, days: [] };
+
+			week.contributionDays.forEach((day) => {
+				const count = day.contributionCount;
+				if (count < minCount) minCount = count;
+				if (count > maxCount) maxCount = count;
+
+				weekData.days.push({
+					date: day.date,
+					count: count,
+				});
+			});
+
+			contributions.push(weekData);
+		});
+
+		// Retourner les données JSON au client
+		res.json({
+			username: username,
+			year: year,
+			min: minCount,
+			max: maxCount,
+			contributions: contributions,
+		});
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ error: 'Error fetching data from GitHub API' });
+	}
+};
